@@ -232,7 +232,8 @@ class GamepadController(InputController):
 
         print("Gamepad controls:")
         print("  Left stick: shoulder pan velocity (left/right), shoulder lift velocity (up/down)")
-        print("  Right stick: elbow flex velocity (left/right), wrist flex velocity (up/down)")
+        print("  Right stick: elbow flex velocity (up/down)")
+        print("  D-pad up/down: wrist flex velocity")
         print("  L1/R1: wrist roll velocity")
         print("  L2/R2: gripper")
         print("  Note: Stick position determines movement speed - center to stop")
@@ -299,14 +300,21 @@ class GamepadController(InputController):
             # Left stick X and Y (typically axes 0 and 1)
             shoulder_pan = self.joystick.get_axis(0)  # Left/Right on left stick
             shoulder_lift = self.joystick.get_axis(1)  # Up/Down on left stick
-            elbow_flex = self.joystick.get_axis(2)  # Left/Right on right stick
-            wrist_flex = self.joystick.get_axis(3)  # Up/Down on right stick
 
-            # Apply deadzone to avoid drift
+            # Right stick Y only for elbow flex (axis 3)
+            elbow_flex = -self.joystick.get_axis(3)  # Up/Down on right stick
+
+            # Get wrist flex from D-pad (up/down)
+            wrist_flex = 0.0
+            if self.joystick.get_hat(0)[1] > 0:  # D-pad up
+                wrist_flex = 1.0
+            elif self.joystick.get_hat(0)[1] < 0:  # D-pad down
+                wrist_flex = -1.0
+
+            # Apply deadzone to joystick inputs
             shoulder_pan = 0 if abs(shoulder_pan) < self.deadzone else shoulder_pan
             shoulder_lift = 0 if abs(shoulder_lift) < self.deadzone else shoulder_lift
             elbow_flex = 0 if abs(elbow_flex) < self.deadzone else elbow_flex
-            wrist_flex = 0 if abs(wrist_flex) < self.deadzone else wrist_flex
 
             # Get L1/R1 state for wrist roll
             wrist_roll = 0.0
@@ -397,7 +405,8 @@ class GamepadControllerHID(InputController):
 
             logging.info("Gamepad controls (HID mode):")
             logging.info("  Left stick: shoulder pan velocity (left/right), shoulder lift velocity (up/down)")
-            logging.info("  Right stick: elbow flex velocity (left/right), wrist flex velocity (up/down)")
+            logging.info("  Right stick: elbow flex velocity (up/down)")
+            logging.info("  D-pad up/down: wrist flex velocity")
             logging.info("  L1/R1: wrist roll velocity")
             logging.info("  L2/R2: gripper")
             logging.info("  Note: Stick position determines movement speed - center to stop")
@@ -513,15 +522,26 @@ class GamepadControllerHID(InputController):
     def get_deltas(self):
         """Get the current movement deltas from gamepad state."""
         # Return the joint movements
-        return (
-            -self.left_x,  # shoulder pan
-            -self.left_y,  # shoulder lift
-            -self.right_x,  # elbow flex
-            -self.right_y,  # wrist flex
-            1.0
-            if self.buttons.get("right_shoulder_button_pressed", False)
-            else (-1.0 if self.buttons.get("left_shoulder_button_pressed", False) else 0.0),  # wrist roll
-        )
+        # For HID controller, we need to adapt the controls similarly
+        shoulder_pan = -self.left_x  # shoulder pan from left stick X
+        shoulder_lift = -self.left_y  # shoulder lift from left stick Y
+        elbow_flex = -self.right_y  # elbow flex from right stick Y only
+
+        # Get wrist flex from D-pad (up/down)
+        wrist_flex = 0.0
+        if self.buttons.get("top_pad_pressed", False):  # D-pad up
+            wrist_flex = 1.0
+        elif self.buttons.get("bottom_pad_pressed", False):  # D-pad down
+            wrist_flex = -1.0
+
+        # Get wrist roll from L1/R1
+        wrist_roll = 0.0
+        if self.buttons.get("left_shoulder_button_pressed", False):  # L1
+            wrist_roll = -1.0
+        elif self.buttons.get("right_shoulder_button_pressed", False):  # R1
+            wrist_roll = 1.0
+
+        return shoulder_pan, shoulder_lift, elbow_flex, wrist_flex, wrist_roll
 
     def should_quit(self):
         """Return True if quit button was pressed."""

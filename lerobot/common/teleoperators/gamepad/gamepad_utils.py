@@ -231,12 +231,11 @@ class GamepadController(InputController):
         logging.info(f"Initialized gamepad: {self.joystick.get_name()}")
 
         print("Gamepad controls:")
-        print("  Left analog stick: Move in X-Y plane")
-        print("  Right analog stick (vertical): Move in Z axis")
-        print("  B/Circle button: Exit")
-        print("  Y/Triangle button: End episode with SUCCESS")
-        print("  A/Cross button: End episode with FAILURE")
-        print("  X/Square button: Rerecord episode")
+        print("  Left stick: shoulder pan velocity (left/right), shoulder lift velocity (up/down)")
+        print("  Right stick: elbow flex velocity (left/right), wrist flex velocity (up/down)")
+        print("  L1/R1: wrist roll velocity")
+        print("  L2/R2: gripper")
+        print("  Note: Stick position determines movement speed - center to stop")
 
     def stop(self):
         """Clean up pygame resources."""
@@ -292,30 +291,36 @@ class GamepadController(InputController):
         """Get the current movement deltas from gamepad state."""
         import pygame
 
+        if not self.joystick:
+            return 0.0, 0.0, 0.0, 0.0, 0.0
+
         try:
             # Read joystick axes
             # Left stick X and Y (typically axes 0 and 1)
-            x_input = self.joystick.get_axis(0)  # Left/Right
-            y_input = self.joystick.get_axis(1)  # Up/Down (often inverted)
-
-            # Right stick Y (typically axis 3 or 4)
-            z_input = self.joystick.get_axis(3)  # Up/Down for Z
+            shoulder_pan = self.joystick.get_axis(0)  # Left/Right on left stick
+            shoulder_lift = self.joystick.get_axis(1)  # Up/Down on left stick
+            elbow_flex = self.joystick.get_axis(2)  # Left/Right on right stick
+            wrist_flex = self.joystick.get_axis(3)  # Up/Down on right stick
 
             # Apply deadzone to avoid drift
-            x_input = 0 if abs(x_input) < self.deadzone else x_input
-            y_input = 0 if abs(y_input) < self.deadzone else y_input
-            z_input = 0 if abs(z_input) < self.deadzone else z_input
+            shoulder_pan = 0 if abs(shoulder_pan) < self.deadzone else shoulder_pan
+            shoulder_lift = 0 if abs(shoulder_lift) < self.deadzone else shoulder_lift
+            elbow_flex = 0 if abs(elbow_flex) < self.deadzone else elbow_flex
+            wrist_flex = 0 if abs(wrist_flex) < self.deadzone else wrist_flex
 
-            # Calculate deltas (note: may need to invert axes depending on controller)
-            delta_x = -y_input * self.y_step_size  # Forward/backward
-            delta_y = -x_input * self.x_step_size  # Left/right
-            delta_z = -z_input * self.z_step_size  # Up/down
+            # Get L1/R1 state for wrist roll
+            wrist_roll = 0.0
+            if self.joystick.get_button(4):  # L1
+                wrist_roll = -1.0
+            elif self.joystick.get_button(5):  # R1
+                wrist_roll = 1.0
 
-            return delta_x, delta_y, delta_z
+            # Return the joint movements
+            return shoulder_pan, shoulder_lift, elbow_flex, wrist_flex, wrist_roll
 
         except pygame.error:
             logging.error("Error reading gamepad. Is it still connected?")
-            return 0.0, 0.0, 0.0
+            return 0.0, 0.0, 0.0, 0.0, 0.0
 
 
 class GamepadControllerHID(InputController):
@@ -359,7 +364,11 @@ class GamepadControllerHID(InputController):
         devices = hid.enumerate()
         for device in devices:
             device_name = device["product_string"]
-            if any(controller in device_name for controller in ["Logitech", "Xbox", "PS4", "PS5"]):
+            # Check for known controller names and also "Wireless Controller" which is how PS4 controllers often appear
+            if any(
+                controller in device_name
+                for controller in ["Logitech", "Xbox", "PS4", "PS5", "Wireless Controller"]
+            ):
                 return device
 
         logging.error(
@@ -387,11 +396,11 @@ class GamepadControllerHID(InputController):
             logging.info(f"Connected to {manufacturer} {product}")
 
             logging.info("Gamepad controls (HID mode):")
-            logging.info("  Left analog stick: Move in X-Y plane")
-            logging.info("  Right analog stick: Move in Z axis (vertical)")
-            logging.info("  Button 1/B/Circle: Exit")
-            logging.info("  Button 2/A/Cross: End episode with SUCCESS")
-            logging.info("  Button 3/X/Square: End episode with FAILURE")
+            logging.info("  Left stick: shoulder pan velocity (left/right), shoulder lift velocity (up/down)")
+            logging.info("  Right stick: elbow flex velocity (left/right), wrist flex velocity (up/down)")
+            logging.info("  L1/R1: wrist roll velocity")
+            logging.info("  L2/R2: gripper")
+            logging.info("  Note: Stick position determines movement speed - center to stop")
 
         except OSError as e:
             logging.error(f"Error opening gamepad: {e}")
@@ -420,56 +429,99 @@ class GamepadControllerHID(InputController):
         try:
             # Read data from the gamepad
             data = self.device.read(64)
-            # Interpret gamepad data - this will vary by controller model
-            # These offsets are for the Logitech RumblePad 2
+            # Interpret gamepad data - handle both PS4 and other controllers
             if data and len(data) >= 8:
-                # Normalize joystick values from 0-255 to -1.0-1.0
-                self.left_x = (data[1] - 128) / 128.0
-                self.left_y = (data[2] - 128) / 128.0
-                self.right_x = (data[3] - 128) / 128.0
-                self.right_y = (data[4] - 128) / 128.0
+                if (
+                    self.device_info is not None and self.device_info.get("vendor_id") == 0x054C
+                ):  # Sony PS4 controller
+                    # PS4 specific data format
+                    # Left stick X and Y (0-255)
+                    self.left_x = (data[1] - 128) / 128.0
+                    self.left_y = (data[2] - 128) / 128.0
+                    # Right stick X and Y (0-255)
+                    self.right_x = (data[3] - 128) / 128.0
+                    self.right_y = (data[4] - 128) / 128.0
 
-                # Apply deadzone
-                self.left_x = 0 if abs(self.left_x) < self.deadzone else self.left_x
-                self.left_y = 0 if abs(self.left_y) < self.deadzone else self.left_y
-                self.right_x = 0 if abs(self.right_x) < self.deadzone else self.right_x
-                self.right_y = 0 if abs(self.right_y) < self.deadzone else self.right_y
+                    # Apply deadzone
+                    self.left_x = 0 if abs(self.left_x) < self.deadzone else self.left_x
+                    self.left_y = 0 if abs(self.left_y) < self.deadzone else self.left_y
+                    self.right_x = 0 if abs(self.right_x) < self.deadzone else self.right_x
+                    self.right_y = 0 if abs(self.right_y) < self.deadzone else self.right_y
 
-                # Parse button states (byte 5 in the Logitech RumblePad 2)
-                buttons = data[5]
+                    # PS4 buttons are in byte 5
+                    buttons = data[5]
 
-                # Check if RB is pressed then the intervention flag should be set
-                self.intervention_flag = data[6] in [2, 6, 10, 14]
+                    # PS4 specific button mapping
+                    # Triangle (bit 7), Circle (bit 6), X (bit 5), Square (bit 4)
+                    if buttons & (1 << 7):  # Triangle - success
+                        self.episode_end_status = "success"
+                    elif buttons & (1 << 5):  # X - failure
+                        self.episode_end_status = "failure"
+                    elif buttons & (1 << 4):  # Square - rerecord
+                        self.episode_end_status = "rerecord_episode"
+                    else:
+                        self.episode_end_status = None
 
-                # Check if RT is pressed
-                self.open_gripper_command = data[6] in [8, 10, 12]
+                    # L2/R2 triggers are in byte 8/9 (0-255)
+                    self.close_gripper_command = data[8] > 128  # L2
+                    self.open_gripper_command = data[9] > 128  # R2
 
-                # Check if LT is pressed
-                self.close_gripper_command = data[6] in [4, 6, 12]
+                    # R1 for intervention (byte 6, bit 5)
+                    self.intervention_flag = bool(buttons & (1 << 5))
 
-                # Check if Y/Triangle button (bit 7) is pressed for saving
-                # Check if X/Square button (bit 5) is pressed for failure
-                # Check if A/Cross button (bit 4) is pressed for rerecording
-                if buttons & 1 << 7:
-                    self.episode_end_status = "success"
-                elif buttons & 1 << 5:
-                    self.episode_end_status = "failure"
-                elif buttons & 1 << 4:
-                    self.episode_end_status = "rerecord_episode"
                 else:
-                    self.episode_end_status = None
+                    # Original code for other controllers
+                    # Normalize joystick values from 0-255 to -1.0-1.0
+                    self.left_x = (data[1] - 128) / 128.0
+                    self.left_y = (data[2] - 128) / 128.0
+                    self.right_x = (data[3] - 128) / 128.0
+                    self.right_y = (data[4] - 128) / 128.0
+
+                    # Apply deadzone
+                    self.left_x = 0 if abs(self.left_x) < self.deadzone else self.left_x
+                    self.left_y = 0 if abs(self.left_y) < self.deadzone else self.left_y
+                    self.right_x = 0 if abs(self.right_x) < self.deadzone else self.right_x
+                    self.right_y = 0 if abs(self.right_y) < self.deadzone else self.right_y
+
+                    # Parse button states (byte 5 in the Logitech RumblePad 2)
+                    buttons = data[5]
+
+                    # Check if RB is pressed then the intervention flag should be set
+                    self.intervention_flag = data[6] in [2, 6, 10, 14]
+
+                    # Check if RT is pressed
+                    self.open_gripper_command = data[6] in [8, 10, 12]
+
+                    # Check if LT is pressed
+                    self.close_gripper_command = data[6] in [4, 6, 12]
+
+                    # Check if Y/Triangle button (bit 7) is pressed for saving
+                    # Check if X/Square button (bit 5) is pressed for failure
+                    # Check if A/Cross button (bit 4) is pressed for rerecording
+                    if buttons & 1 << 7:
+                        self.episode_end_status = "success"
+                    elif buttons & 1 << 5:
+                        self.episode_end_status = "failure"
+                    elif buttons & 1 << 4:
+                        self.episode_end_status = "rerecord_episode"
+                    else:
+                        self.episode_end_status = None
 
         except OSError as e:
             logging.error(f"Error reading from gamepad: {e}")
 
     def get_deltas(self):
         """Get the current movement deltas from gamepad state."""
-        # Calculate deltas - invert as needed based on controller orientation
-        delta_x = -self.left_y * self.x_step_size  # Forward/backward
-        delta_y = -self.left_x * self.y_step_size  # Left/right
-        delta_z = -self.right_y * self.z_step_size  # Up/down
-
-        return delta_x, delta_y, delta_z
+        # Return the joint movements
+        return (
+            -self.left_x,  # shoulder pan
+            -self.left_y,  # shoulder lift
+            -self.right_x,  # elbow flex
+            -self.right_y,  # wrist flex
+            1.0
+            if self.buttons.get("right_shoulder_button_pressed", False)
+            else (-1.0 if self.buttons.get("left_shoulder_button_pressed", False) else 0.0),  # wrist roll
+        )
 
     def should_quit(self):
         """Return True if quit button was pressed."""

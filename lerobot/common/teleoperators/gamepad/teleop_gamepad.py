@@ -40,6 +40,7 @@ gripper_action_map = {
 class GamepadTeleop(Teleoperator):
     """
     Teleop class to use gamepad inputs for control.
+    The joystick positions determine the velocity of movement rather than absolute position.
     """
 
     config_class = GamepadTeleopConfig
@@ -49,8 +50,15 @@ class GamepadTeleop(Teleoperator):
         super().__init__(config)
         self.config = config
         self.robot_type = config.type
-
         self.gamepad = None
+        # Current joint positions
+        self.current_positions = {
+            "shoulder_pan": 0.0,
+            "shoulder_lift": 0.0,
+            "elbow_flex": 0.0,
+            "wrist_flex": 0.0,
+            "wrist_roll": 0.0,
+        }
 
     @property
     def action_features(self) -> dict:
@@ -74,7 +82,7 @@ class GamepadTeleop(Teleoperator):
     def connect(self) -> None:
         # use HidApi for macos
         if sys.platform == "darwin":
-            # NOTE: On macOS, pygame doesn’t reliably detect input from some controllers so we fall back to hidapi
+            # NOTE: On macOS, pygame doesn't reliably detect input from some controllers so we fall back to hidapi
             from .gamepad_utils import GamepadControllerHID as Gamepad
         else:
             from .gamepad_utils import GamepadController as Gamepad
@@ -84,26 +92,43 @@ class GamepadTeleop(Teleoperator):
 
     def get_action(self) -> dict[str, Any]:
         # Update the controller to get fresh inputs
+        if self.gamepad is None:
+            raise RuntimeError("Gamepad is not initialized. Did you call connect()?")
+
         self.gamepad.update()
 
-        # Get movement deltas from the controller
-        delta_x, delta_y, delta_z = self.gamepad.get_deltas()
+        # Get velocity commands from the controller
+        shoulder_pan_vel, shoulder_lift_vel, elbow_flex_vel, wrist_flex_vel, wrist_roll_vel = (
+            self.gamepad.get_deltas()
+        )
 
-        # Create action from gamepad input
-        gamepad_action = np.array([delta_x, delta_y, delta_z], dtype=np.float32)
+        # Scale factor for velocity (adjust these values to tune the control sensitivity)
+        VELOCITY_SCALE = 0.3  # This makes the movement more manageable
 
+        # Update positions based on velocity
+        self.current_positions["shoulder_pan"] += -shoulder_pan_vel * VELOCITY_SCALE
+        self.current_positions["shoulder_lift"] += shoulder_lift_vel * VELOCITY_SCALE
+        self.current_positions["elbow_flex"] += elbow_flex_vel * VELOCITY_SCALE
+        self.current_positions["wrist_flex"] += wrist_flex_vel * VELOCITY_SCALE
+        self.current_positions["wrist_roll"] += wrist_roll_vel * VELOCITY_SCALE
+
+        # Create action dictionary with updated positions
         action_dict = {
-            "delta_x": gamepad_action[0],
-            "delta_y": gamepad_action[1],
-            "delta_z": gamepad_action[2],
+            "shoulder_pan.pos": self.current_positions["shoulder_pan"],
+            "shoulder_lift.pos": self.current_positions["shoulder_lift"],
+            "elbow_flex.pos": self.current_positions["elbow_flex"],
+            "wrist_flex.pos": self.current_positions["wrist_flex"],
+            "wrist_roll.pos": self.current_positions["wrist_roll"],
         }
 
-        # Default gripper action is to stay
-        gripper_action = GripperAction.STAY.value
+        # Handle gripper control
         if self.config.use_gripper:
-            gripper_command = self.gamepad.gripper_command()
-            gripper_action = gripper_action_map[gripper_command]
-            action_dict["gripper"] = gripper_action
+            if self.gamepad.open_gripper_command:
+                action_dict["gripper.pos"] = 100.0  # Fully open
+            elif self.gamepad.close_gripper_command:
+                action_dict["gripper.pos"] = 0.0  # Fully closed
+            else:
+                action_dict["gripper.pos"] = 50.0  # Stay in current position
 
         return action_dict
 
@@ -119,12 +144,11 @@ class GamepadTeleop(Teleoperator):
 
     def calibrate(self) -> None:
         """Calibrate the gamepad."""
-        # No calibration needed for gamepad
-        pass
+        # Reset current positions
+        self.current_positions = {k: 0.0 for k in self.current_positions}
 
     def is_calibrated(self) -> bool:
         """Check if gamepad is calibrated."""
-        # Gamepad doesn't require calibration
         return True
 
     def configure(self) -> None:

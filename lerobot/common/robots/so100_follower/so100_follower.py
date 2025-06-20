@@ -147,6 +147,8 @@ class SO100Follower(Robot):
                 # Set I_Coefficient and D_Coefficient to default value 0 and 32
                 self.bus.write("I_Coefficient", motor, 0)
                 self.bus.write("D_Coefficient", motor, 32)
+                # Set Moving_Velocity to a lower value for smoother movement (default is much higher)
+                self.bus.write("Moving_Velocity", motor, 50)  # This will make movements smoother
 
     def setup_motors(self) -> None:
         for motor in reversed(self.bus.motors):

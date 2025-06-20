@@ -232,9 +232,8 @@ class GamepadController(InputController):
 
         print("Gamepad controls:")
         print("  Left stick: shoulder pan velocity (left/right), shoulder lift velocity (up/down)")
-        print("  Right stick: elbow flex velocity (up/down)")
+        print("  Right stick: elbow flex velocity (up/down), wrist roll velocity (left/right)")
         print("  D-pad up/down: wrist flex velocity")
-        print("  L1/R1: wrist roll velocity")
         print("  L2/R2: gripper")
         print("  Note: Stick position determines movement speed - center to stop")
 
@@ -301,8 +300,9 @@ class GamepadController(InputController):
             shoulder_pan = self.joystick.get_axis(0)  # Left/Right on left stick
             shoulder_lift = self.joystick.get_axis(1)  # Up/Down on left stick
 
-            # Right stick Y only for elbow flex (axis 3)
+            # Right stick Y for elbow flex (axis 3) and X for wrist roll (axis 2)
             elbow_flex = -self.joystick.get_axis(3)  # Up/Down on right stick
+            wrist_roll = -2.0 * self.joystick.get_axis(2)  # Left/Right on right stick (inverted and 2x speed)
 
             # Get wrist flex from D-pad (up/down)
             wrist_flex = 0.0
@@ -315,13 +315,7 @@ class GamepadController(InputController):
             shoulder_pan = 0 if abs(shoulder_pan) < self.deadzone else shoulder_pan
             shoulder_lift = 0 if abs(shoulder_lift) < self.deadzone else shoulder_lift
             elbow_flex = 0 if abs(elbow_flex) < self.deadzone else elbow_flex
-
-            # Get L1/R1 state for wrist roll
-            wrist_roll = 0.0
-            if self.joystick.get_button(4):  # L1
-                wrist_roll = -1.0
-            elif self.joystick.get_button(5):  # R1
-                wrist_roll = 1.0
+            wrist_roll = 0 if abs(wrist_roll) < self.deadzone else wrist_roll
 
             # Return the joint movements
             return shoulder_pan, shoulder_lift, elbow_flex, wrist_flex, wrist_roll
@@ -405,9 +399,8 @@ class GamepadControllerHID(InputController):
 
             logging.info("Gamepad controls (HID mode):")
             logging.info("  Left stick: shoulder pan velocity (left/right), shoulder lift velocity (up/down)")
-            logging.info("  Right stick: elbow flex velocity (up/down)")
+            logging.info("  Right stick: elbow flex velocity (up/down), wrist roll velocity (left/right)")
             logging.info("  D-pad up/down: wrist flex velocity")
-            logging.info("  L1/R1: wrist roll velocity")
             logging.info("  L2/R2: gripper")
             logging.info("  Note: Stick position determines movement speed - center to stop")
 
@@ -525,7 +518,8 @@ class GamepadControllerHID(InputController):
         # For HID controller, we need to adapt the controls similarly
         shoulder_pan = -self.left_x  # shoulder pan from left stick X
         shoulder_lift = -self.left_y  # shoulder lift from left stick Y
-        elbow_flex = -self.right_y  # elbow flex from right stick Y only
+        elbow_flex = -self.right_y  # elbow flex from right stick Y
+        wrist_roll = -2.0 * self.right_x  # wrist roll from right stick X (inverted and 2x speed)
 
         # Get wrist flex from D-pad (up/down)
         wrist_flex = 0.0
@@ -533,13 +527,6 @@ class GamepadControllerHID(InputController):
             wrist_flex = 1.0
         elif self.buttons.get("bottom_pad_pressed", False):  # D-pad down
             wrist_flex = -1.0
-
-        # Get wrist roll from L1/R1
-        wrist_roll = 0.0
-        if self.buttons.get("left_shoulder_button_pressed", False):  # L1
-            wrist_roll = -1.0
-        elif self.buttons.get("right_shoulder_button_pressed", False):  # R1
-            wrist_roll = 1.0
 
         return shoulder_pan, shoulder_lift, elbow_flex, wrist_flex, wrist_roll
 

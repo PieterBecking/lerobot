@@ -147,7 +147,8 @@ class RecordConfig:
         if policy_path:
             cli_overrides = parser.get_cli_overrides("policy")
             self.policy = PreTrainedConfig.from_pretrained(policy_path, cli_overrides=cli_overrides)
-            self.policy.pretrained_path = policy_path
+            # Store pretrained path as a custom attribute since pretrained_path may not be settable
+            setattr(self.policy, '_pretrained_path', policy_path)
 
         if self.teleop is None and self.policy is None:
             raise ValueError("Choose a policy, a teleoperator or both to control the robot")
@@ -166,7 +167,7 @@ def record_loop(
     dataset: LeRobotDataset | None = None,
     teleop: Teleoperator | None = None,
     policy: PreTrainedPolicy | None = None,
-    control_time_s: int | None = None,
+    control_time_s: int | float | None = None,
     single_task: str | None = None,
     display_data: bool = False,
 ):
@@ -179,7 +180,7 @@ def record_loop(
 
     timestamp = 0
     start_episode_t = time.perf_counter()
-    while timestamp < control_time_s:
+    while control_time_s is not None and timestamp < control_time_s:
         start_loop_t = time.perf_counter()
 
         if events["exit_early"]:
@@ -188,14 +189,14 @@ def record_loop(
 
         observation = robot.get_observation()
 
-        if policy is not None or dataset is not None:
+        if (policy is not None or dataset is not None) and dataset is not None:
             observation_frame = build_dataset_frame(dataset.features, observation, prefix="observation")
 
         if policy is not None:
             action_values = predict_action(
                 observation_frame,
                 policy,
-                get_safe_torch_device(policy.config.device),
+                get_safe_torch_device(policy.config.device or "cpu"),
                 policy.config.use_amp,
                 task=single_task,
                 robot_type=robot.robot_type,
@@ -218,7 +219,7 @@ def record_loop(
         if dataset is not None:
             action_frame = build_dataset_frame(dataset.features, sent_action, prefix="action")
             frame = {**observation_frame, **action_frame}
-            dataset.add_frame(frame, task=single_task)
+            dataset.add_frame(frame, task=single_task or "")
 
         if display_data:
             for obs, val in observation.items():
@@ -256,10 +257,10 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
             root=cfg.dataset.root,
         )
 
-        if hasattr(robot, "cameras") and len(robot.cameras) > 0:
+        if hasattr(robot, "cameras") and len(getattr(robot, "cameras", [])) > 0:
             dataset.start_image_writer(
                 num_processes=cfg.dataset.num_image_writer_processes,
-                num_threads=cfg.dataset.num_image_writer_threads_per_camera * len(robot.cameras),
+                num_threads=cfg.dataset.num_image_writer_threads_per_camera * len(getattr(robot, "cameras", [])),
             )
         sanity_check_dataset_robot_compatibility(dataset, robot, cfg.dataset.fps, dataset_features)
     else:
@@ -273,7 +274,7 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
             features=dataset_features,
             use_videos=cfg.dataset.video,
             image_writer_processes=cfg.dataset.num_image_writer_processes,
-            image_writer_threads=cfg.dataset.num_image_writer_threads_per_camera * len(robot.cameras),
+            image_writer_threads=cfg.dataset.num_image_writer_threads_per_camera * len(getattr(robot, "cameras", [])),
         )
 
     # Load pretrained policy
@@ -330,7 +331,8 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
     log_say("Stop recording", cfg.play_sounds, blocking=True)
 
     robot.disconnect()
-    teleop.disconnect()
+    if teleop is not None:
+        teleop.disconnect()
 
     if not is_headless() and listener is not None:
         listener.stop()

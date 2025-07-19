@@ -604,6 +604,83 @@ def register_ports():
         raise
 
 
+def show_interactive_menu() -> tuple:
+    """
+    Show an interactive menu for selecting operation mode and options.
+    
+    Returns:
+        tuple: (args_dict, should_exit)
+    """
+    print_banner()
+    print("\n🎯 What would you like to do?\n")
+    print("1. Register new ports configuration")
+    print("2. Run teleoperation")
+    print("3. Register ports and then run teleoperation")
+    print("q. Quit")
+    
+    while True:
+        choice = input("\n❓ Please select an option (1-3, q): ").strip().lower()
+        
+        if choice == 'q':
+            return {}, True
+            
+        if choice not in ['1', '2', '3']:
+            print("❌ Invalid choice, please try again")
+            continue
+            
+        # Base configuration
+        args = {
+            'register_ports': False,
+            'teleop': False,
+            'ports_config_path': None,
+            'fps': 60,
+            'teleop_time_s': None,
+            'display_data': False
+        }
+        
+        # Set mode based on choice
+        if choice == '1':
+            args['register_ports'] = True
+        elif choice == '2':
+            args['teleop'] = True
+        else:  # choice == '3'
+            args['register_ports'] = True
+            args['teleop'] = True
+        
+        # If teleoperation selected, ask for additional options
+        if args['teleop']:
+            print("\n📊 Teleoperation Options:")
+            
+            # Ask for FPS
+            while True:
+                fps = input("   Enter FPS (10-120, default=60): ").strip()
+                if not fps:  # Use default
+                    break
+                try:
+                    fps_val = int(fps)
+                    if 10 <= fps_val <= 120:
+                        args['fps'] = fps_val
+                        break
+                    else:
+                        print("   ❌ FPS must be between 10 and 120")
+                except ValueError:
+                    print("   ❌ Please enter a valid number")
+            
+            # Ask for duration
+            duration = input("   Enter duration in seconds (empty for infinite): ").strip()
+            if duration:
+                try:
+                    args['teleop_time_s'] = float(duration)
+                except ValueError:
+                    print("   ⚠️  Invalid duration, using infinite")
+            
+            # Ask for data display
+            display = input("   Display camera and data visualization? (y/N): ").strip().lower()
+            args['display_data'] = display in ['y', 'yes']
+        
+        return args, False
+
+
 def main():
     """Main function with argument parsing."""
     parser = argparse.ArgumentParser(
@@ -650,9 +727,20 @@ def main():
         help="Display cameras and data using rerun visualization"
     )
     
+    # Parse arguments
     args = parser.parse_args()
     
-    # If no action specified, default to showing help
+    # If no arguments provided, show interactive menu
+    if not any([args.register_ports, args.teleop, args.ports_config_path]):
+        interactive_args, should_exit = show_interactive_menu()
+        if should_exit:
+            return
+        
+        # Update args with interactive choices
+        for key, value in interactive_args.items():
+            setattr(args, key, value)
+    
+    # If still no action specified after interactive menu, show help
     if not args.register_ports and not args.teleop:
         parser.print_help()
         return
@@ -664,7 +752,6 @@ def main():
         config_path = Path(args.ports_config_path)
     else:
         # Otherwise, show selection menu
-        print_banner()
         selected_path = list_and_select_port_configs()
         if selected_path is None:
             if args.register_ports:

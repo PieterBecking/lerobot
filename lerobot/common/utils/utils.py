@@ -188,7 +188,7 @@ def say(text, blocking=False):
     system = platform.system()
 
     if system == "Darwin":
-        cmd = ["say", text]
+        cmd = ["say", "-v", "Samantha", text]
 
     elif system == "Linux":
         cmd = ["spd-say", text]

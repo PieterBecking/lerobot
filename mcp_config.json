@@ -1,0 +1,13 @@
+{
+    "mcpServers": {
+        "robot-control": {
+            "command": "python",
+            "args": [
+                "robot_mcp_server.py"
+            ],
+            "env": {
+                "ROBOT_SERVER_URL": "https://68abb2f56964.ngrok-free.app"
+            }
+        }
+    }
+}

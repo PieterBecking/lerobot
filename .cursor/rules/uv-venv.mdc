@@ -1,6 +1,0 @@
----
-description: 
-globs: 
-alwaysApply: true
----
-always actuvate the .venv virtual environment and do uv pip ... etc

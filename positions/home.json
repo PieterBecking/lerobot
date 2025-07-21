@@ -1,0 +1,11 @@
+{
+  "timestamp": "2025-07-21 14:02:06",
+  "positions": {
+    "shoulder_pan.pos": -7.934014139827184,
+    "shoulder_lift.pos": -92.44069159630077,
+    "elbow_flex.pos": 98.31634913602127,
+    "wrist_flex.pos": -99.0008326394671,
+    "wrist_roll.pos": -2.124542124542131,
+    "gripper.pos": 0.603448275862069
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "left_leader": {
+    "type": "so100_leader",
+    "port": "/dev/tty.usbmodem5A680106661",
+    "id": "left_leader_arm",
+    "name": "Left Leader Arm"
+  },
+  "right_leader": {
+    "type": "so100_leader",
+    "port": "/dev/tty.usbmodem5A460843481",
+    "id": "right_leader_arm",
+    "name": "Right Leader Arm"
+  },
+  "left_follower": {
+    "type": "so100_follower",
+    "port": "/dev/tty.usbmodem5A680097171",
+    "id": "left_follower_arm",
+    "name": "Left Follower Arm"
+  },
+  "right_follower": {
+    "type": "so100_follower",
+    "port": "/dev/tty.usbmodem5A680106981",
+    "id": "right_follower_arm",
+    "name": "Right Follower Arm"
+  }
+}

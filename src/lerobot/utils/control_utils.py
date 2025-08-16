@@ -124,7 +124,15 @@ def predict_action(
 
         # Compute the next action with the policy
         # based on the current observation
-        action = policy.select_action(observation)
+        action_output = policy.select_action(observation)
+        
+        # Handle different return types from different policies
+        if isinstance(action_output, tuple):
+            # ACT policy returns (action, reward_pred)
+            action = action_output[0]
+        else:
+            # Other policies return just action
+            action = action_output
 
         # Remove batch dimension
         action = action.squeeze(0)

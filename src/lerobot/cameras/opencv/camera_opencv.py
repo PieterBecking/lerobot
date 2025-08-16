@@ -222,9 +222,17 @@ class OpenCVCamera(Camera):
 
         success = self.videocapture.set(cv2.CAP_PROP_FPS, float(self.fps))
         actual_fps = self.videocapture.get(cv2.CAP_PROP_FPS)
-        # Use math.isclose for robust float comparison
-        if not success or not math.isclose(self.fps, actual_fps, rel_tol=1e-3):
-            raise RuntimeError(f"{self} failed to set fps={self.fps} ({actual_fps=}).")
+        # Use math.isclose for robust float comparison with more lenient tolerance for camera hardware
+        fps_close = math.isclose(float(self.fps), actual_fps, rel_tol=1e-2)
+        
+        if not success:
+            # Some cameras don't support setting FPS, but still work fine
+            logging.warning(f"{self} could not set fps={self.fps} (opencv set() returned False), using camera default fps={actual_fps}")
+            return
+        
+        if not fps_close:
+            # If FPS setting succeeded but value is different, warn but continue
+            logging.warning(f"{self} fps mismatch: requested={self.fps}, actual={actual_fps} (diff={abs(float(self.fps) - actual_fps)}), continuing anyway")
 
     def _validate_width_and_height(self) -> None:
         """Validates and sets the camera's frame capture width and height."""

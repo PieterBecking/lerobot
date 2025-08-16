@@ -1,0 +1,13 @@
+python -m lerobot.record \
+    --robot.type=so100_follower \
+    --robot.port=/dev/tty.usbmodem5A680106981 \
+    --robot.cameras="{laptop: {type: opencv, index_or_path: 0, fps: 30, width: 1920, height: 1080}}" \
+    --robot.id=ilya \
+    --teleop.type=so100_leader \
+    --teleop.port=/dev/tty.usbmodem5A460843481 \
+    --teleop.id=lex \
+    --dataset.repo_id=PieterBecking/block-in-grey-trey-7 \
+    --dataset.num_episodes=10 \
+    --dataset.single_task="Put the black block in the grey tray" \
+    --dataset.video_encoding_batch_size=10 \
+    --display_data=true

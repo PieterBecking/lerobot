@@ -1,0 +1,12 @@
+python -m lerobot.record \
+    --robot.type=so100_follower \
+    --robot.port=/dev/tty.usbmodem5A680106981 \
+    --robot.cameras="{laptop: {type: opencv, index_or_path: 0, fps: 30, width: 1920, height: 1080}}" \
+    --robot.id=ilya \
+    --policy.path=PieterBecking/250809-pick-place-intermediate-2 \
+    --policy.use_reward_head=false \
+    --dataset.repo_id=PieterBecking/eval_250809-pick-place-$(date +%s) \
+    --dataset.num_episodes=1 \
+    --dataset.single_task="Put the black block in the grey tray" \
+    --dataset.video_encoding_batch_size=1 \
+    --display_data=true
